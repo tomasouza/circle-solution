@@ -1,0 +1,748 @@
+{
+  "info": {
+    "name": "Circle API - PicPay Integration",
+    "description": "Comprehensive Postman collection for PicPay's Circle API integration including Mint API, Cross-Currency API, and Payments API calls for BRL ↔ USDC conversion and international transfers.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "version": "1.0.0"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{circle_api_key}}",
+        "type": "string"
+      }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Set dynamic idempotency key for each request",
+          "pm.environment.set('idempotency_key', pm.variables.replaceIn('{{$guid}}'));"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Account & Configuration",
+      "description": "Account setup and configuration endpoints",
+      "item": [
+        {
+          "name": "Get Account Configuration",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{circle_base_url}}/v1/configuration",
+              "host": ["{{circle_base_url}}"],
+              "path": ["v1", "configuration"]
+            },
+            "description": "Retrieve account configuration including supported currencies and features"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Business Account",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{circle_base_url}}/v1/businessAccount",
+              "host": ["{{circle_base_url}}"],
+              "path": ["v1", "businessAccount"]
+            },
+            "description": "Get business account details and status"
+          },
+          "response": []
+        },
+        {
+          "name": "Get PIX Bank Accounts",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{circle_base_url}}/v1/businessAccount/banks/pix",
+              "host": ["{{circle_base_url}}"],
+              "path": ["v1", "businessAccount", "banks", "pix"]
+            },
+            "description": "Get linked PIX bank accounts for BRL settlement"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "2. Circle Mint API - BRL ↔ USDC",
+      "description": "Circle Mint API calls for BRL to USDC conversion and vice versa",
+      "item": [
+        {
+          "name": "Create BRL → USDC Quote",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Store quote ID for subsequent requests",
+                  "if (pm.response.code === 201) {",
+                  "    const response = pm.response.json();",
+                  "    pm.environment.set('quote_id', response.data.id);",
+                  "    console.log('Quote ID stored:', response.data.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"tradable\",\n  \"idempotencyKey\": \"{{idempotency_key}}\",\n  \"from\": {\n    \"currency\": \"BRL\",\n    \"amount\": \"100\"\n  },\n  \"to\": {\n    \"currency\": \"USDC\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{circle_base_url}}/v1/exchange/quotes",
+              "host": ["{{circle_base_url}}"],
+              "path": ["v1", "exchange", "quotes"]
+            },
+            "description": "Create a tradable quote for converting BRL to USDC (30-second expiry)"
+          },
+          "response": []
+        },
+        {
+          "name": "Create USDC → BRL Quote",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Store quote ID for redeem process",
+                  "if (pm.response.code === 201) {",
+                  "    const response = pm.response.json();",
+                  "    pm.environment.set('quote_id', response.data.id);",
+                  "    console.log('Redeem Quote ID stored:', response.data.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"tradable\",\n  \"idempotencyKey\": \"{{idempotency_key}}\",\n  \"from\": {\n    \"currency\": \"USDC\",\n    \"amount\": \"10\"\n  },\n  \"to\": {\n    \"currency\": \"BRL\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{circle_base_url}}/v1/exchange/quotes",
+              "host": ["{{circle_base_url}}"],
+              "path": ["v1", "exchange", "quotes"]
+            },
+            "description": "Create a tradable quote for redeeming USDC to BRL"
+          },
+          "response": []
+        },
+        {
+          "name": "Execute Trade (Mint)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Store trade ID and settlement ID",
+                  "if (pm.response.code === 201) {",
+                  "    const response = pm.response.json();",
+                  "    pm.environment.set('trade_id', response.data.id);",
+                  "    pm.environment.set('settlement_id', response.data.settlementId);",
+                  "    console.log('Trade ID stored:', response.data.id);",
+                  "    console.log('Settlement ID stored:', response.data.settlementId);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"idempotencyKey\": \"{{idempotency_key}}\",\n  \"quoteId\": \"{{quote_id}}\"\n}"
+            },
+            "url": {
+              "raw": "{{circle_base_url}}/v1/exchange/trades",
+              "host": ["{{circle_base_url}}"],
+              "path": ["v1", "exchange", "trades"]
+            },
+            "description": "Execute trade using the quote ID (must be done within 30 seconds of quote creation)"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Trade Status",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{circle_base_url}}/v1/exchange/trades/{{trade_id}}",
+              "host": ["{{circle_base_url}}"],
+              "path": ["v1", "exchange", "trades", "{{trade_id}}"]
+            },
+            "description": "Get the current status of a trade"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Settlement Batches",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{circle_base_url}}/v1/exchange/trades/settlements?from=2025-01-01&to=2025-12-31",
+              "host": ["{{circle_base_url}}"],
+              "path": ["v1", "exchange", "trades", "settlements"],
+              "query": [
+                {
+                  "key": "from",
+                  "value": "2025-01-01"
+                },
+                {
+                  "key": "to",
+                  "value": "2025-12-31"
+                }
+              ]
+            },
+            "description": "Get settlement batches for a date range"
+          },
+          "response": []
+        },
+        {
+          "name": "Get PIX Payment Instructions",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{circle_base_url}}/v1/exchange/trades/settlements/instructions/BRL",
+              "host": ["{{circle_base_url}}"],
+              "path": ["v1", "exchange", "trades", "settlements", "instructions", "BRL"]
+            },
+            "description": "Get PIX payment instructions for BRL settlement"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "3. Cross-Currency API - International Transfers",
+      "description": "Cross-Currency API calls for international transfers",
+      "item": [
+        {
+          "name": "Create Cross-Currency Quote",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Store quote ID for cross-currency transfer",
+                  "if (pm.response.code === 201) {",
+                  "    const response = pm.response.json();",
+                  "    pm.environment.set('quote_id', response.data.id);",
+                  "    console.log('Cross-Currency Quote ID stored:', response.data.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"idempotencyKey\": \"{{idempotency_key}}\",\n  \"from\": {\n    \"currency\": \"USDC\",\n    \"amount\": \"100\"\n  },\n  \"to\": {\n    \"currency\": \"USD\"\n  },\n  \"destination\": {\n    \"type\": \"wire\",\n    \"name\": \"John Doe\",\n    \"addressLine1\": \"123 Main Street\",\n    \"city\": \"New York\",\n    \"postalCode\": \"10001\",\n    \"country\": \"US\",\n    \"currency\": \"USD\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{circle_base_url}}/v1/transfers/quotes",
+              "host": ["{{circle_base_url}}"],
+              "path": ["v1", "transfers", "quotes"]
+            },
+            "description": "Create a quote for cross-currency transfer (USDC to USD)"
+          },
+          "response": []
+        },
+        {
+          "name": "Create International Transfer",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Store transfer ID",
+                  "if (pm.response.code === 201) {",
+                  "    const response = pm.response.json();",
+                  "    pm.environment.set('transfer_id', response.data.id);",
+                  "    console.log('Transfer ID stored:', response.data.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"idempotencyKey\": \"{{idempotency_key}}\",\n  \"source\": {\n    \"type\": \"wallet\",\n    \"id\": \"{{picpay_wallet_id}}\"\n  },\n  \"destination\": {\n    \"type\": \"wire\",\n    \"name\": \"John Doe\",\n    \"addressLine1\": \"123 Main Street\",\n    \"city\": \"New York\",\n    \"postalCode\": \"10001\",\n    \"country\": \"US\",\n    \"currency\": \"USD\"\n  },\n  \"amount\": {\n    \"amount\": \"95.50\",\n    \"currency\": \"USDC\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{circle_base_url}}/v1/transfers",
+              "host": ["{{circle_base_url}}"],
+              "path": ["v1", "transfers"]
+            },
+            "description": "Create an international transfer from USDC wallet to USD bank account"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Transfer Status",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{circle_base_url}}/v1/transfers/{{transfer_id}}",
+              "host": ["{{circle_base_url}}"],
+              "path": ["v1", "transfers", "{{transfer_id}}"]
+            },
+            "description": "Get the current status of an international transfer"
+          },
+          "response": []
+        },
+        {
+          "name": "List All Transfers",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{circle_base_url}}/v1/transfers?from=2025-01-01&to=2025-12-31&pageBefore&pageAfter&pageSize=10",
+              "host": ["{{circle_base_url}}"],
+              "path": ["v1", "transfers"],
+              "query": [
+                {
+                  "key": "from",
+                  "value": "2025-01-01"
+                },
+                {
+                  "key": "to",
+                  "value": "2025-12-31"
+                },
+                {
+                  "key": "pageBefore",
+                  "value": null
+                },
+                {
+                  "key": "pageAfter",
+                  "value": null
+                },
+                {
+                  "key": "pageSize",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "List all transfers with optional date filtering and pagination"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "4. Wallets & Payments API",
+      "description": "Wallet management and payment operations",
+      "item": [
+        {
+          "name": "List Wallets",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{circle_base_url}}/v1/wallets",
+              "host": ["{{circle_base_url}}"],
+              "path": ["v1", "wallets"]
+            },
+            "description": "List all wallets associated with the account"
+          },
+          "response": []
+        },
+        {
+          "name": "Create Wallet",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"idempotencyKey\": \"{{idempotency_key}}\",\n  \"description\": \"PicPay User Wallet - {{user_id}}\"\n}"
+            },
+            "url": {
+              "raw": "{{circle_base_url}}/v1/wallets",
+              "host": ["{{circle_base_url}}"],
+              "path": ["v1", "wallets"]
+            },
+            "description": "Create a new wallet for a PicPay user"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Wallet Details",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{circle_base_url}}/v1/wallets/{{picpay_wallet_id}}",
+              "host": ["{{circle_base_url}}"],
+              "path": ["v1", "wallets", "{{picpay_wallet_id}}"]
+            },
+            "description": "Get details of a specific wallet including balance"
+          },
+          "response": []
+        },
+        {
+          "name": "Generate Blockchain Address",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"idempotencyKey\": \"{{idempotency_key}}\",\n  \"currency\": \"USDC\",\n  \"chain\": \"ETH\"\n}"
+            },
+            "url": {
+              "raw": "{{circle_base_url}}/v1/wallets/{{picpay_wallet_id}}/addresses",
+              "host": ["{{circle_base_url}}"],
+              "path": ["v1", "wallets", "{{picpay_wallet_id}}", "addresses"]
+            },
+            "description": "Generate a blockchain address for receiving USDC"
+          },
+          "response": []
+        },
+        {
+          "name": "List Wallet Addresses",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{circle_base_url}}/v1/wallets/{{picpay_wallet_id}}/addresses",
+              "host": ["{{circle_base_url}}"],
+              "path": ["v1", "wallets", "{{picpay_wallet_id}}", "addresses"]
+            },
+            "description": "List all blockchain addresses for a wallet"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "5. Webhook Testing",
+      "description": "Webhook simulation and testing endpoints",
+      "item": [
+        {
+          "name": "Webhook - Trade Complete",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Circle-Signature",
+                "value": "webhook-signature-here",
+                "description": "HMAC signature for webhook verification"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"notificationType\": \"trades\",\n  \"version\": 1,\n  \"customAttributes\": {\n    \"clientId\": \"{{user_id}}\"\n  },\n  \"trade\": {\n    \"id\": \"{{trade_id}}\",\n    \"status\": \"complete\",\n    \"createDate\": \"2025-01-15T10:32:00.000Z\",\n    \"updateDate\": \"2025-01-15T10:35:00.000Z\",\n    \"settlementId\": \"{{settlement_id}}\",\n    \"from\": {\n      \"currency\": \"BRL\",\n      \"amount\": \"100.00\"\n    },\n    \"to\": {\n      \"currency\": \"USDC\",\n      \"amount\": \"17.71\"\n    }\n  }\n}"
+            },
+            "url": {
+              "raw": "{{webhook_endpoint}}",
+              "host": ["{{webhook_endpoint}}"]
+            },
+            "description": "Simulate a trade completion webhook from Circle to PicPay"
+          },
+          "response": []
+        },
+        {
+          "name": "Webhook - Settlement Complete",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Circle-Signature",
+                "value": "webhook-signature-here"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"notificationType\": \"fxSettlement\",\n  \"version\": 1,\n  \"fxSettlement\": {\n    \"id\": \"{{settlement_id}}\",\n    \"status\": \"settled\",\n    \"createDate\": \"2025-01-15T10:32:00.000Z\",\n    \"updateDate\": \"2025-01-15T10:36:00.000Z\",\n    \"currency\": \"BRL\",\n    \"amount\": \"100.00\",\n    \"type\": \"account_payable\",\n    \"reference\": \"FXR1234567\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{webhook_endpoint}}",
+              "host": ["{{webhook_endpoint}}"]
+            },
+            "description": "Simulate a settlement completion webhook"
+          },
+          "response": []
+        },
+        {
+          "name": "Webhook - Transfer Complete",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Circle-Signature",
+                "value": "webhook-signature-here"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"notificationType\": \"transfers\",\n  \"version\": 1,\n  \"transfer\": {\n    \"id\": \"{{transfer_id}}\",\n    \"status\": \"complete\",\n    \"createDate\": \"2025-01-15T11:00:00.000Z\",\n    \"updateDate\": \"2025-01-15T11:05:00.000Z\",\n    \"amount\": {\n      \"amount\": \"95.50\",\n      \"currency\": \"USDC\"\n    },\n    \"fees\": {\n      \"amount\": \"2.50\",\n      \"currency\": \"USD\"\n    },\n    \"trackingRef\": \"TXN-ABC123\",\n    \"destination\": {\n      \"type\": \"wire\",\n      \"name\": \"John Doe\",\n      \"country\": \"US\"\n    }\n  }\n}"
+            },
+            "url": {
+              "raw": "{{webhook_endpoint}}",
+              "host": ["{{webhook_endpoint}}"]
+            },
+            "description": "Simulate an international transfer completion webhook"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "6. Monitoring & Analytics",
+      "description": "Monitoring and analytics endpoints",
+      "item": [
+        {
+          "name": "Get Exchange Rates",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{circle_base_url}}/v1/exchange/rates?from=BRL&to=USDC",
+              "host": ["{{circle_base_url}}"],
+              "path": ["v1", "exchange", "rates"],
+              "query": [
+                {
+                  "key": "from",
+                  "value": "BRL"
+                },
+                {
+                  "key": "to",
+                  "value": "USDC"
+                }
+              ]
+            },
+            "description": "Get current exchange rates for BRL to USDC"
+          },
+          "response": []
+        },
+        {
+          "name": "List All Trades",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{circle_base_url}}/v1/exchange/trades?from=2025-01-01&to=2025-12-31&pageSize=50",
+              "host": ["{{circle_base_url}}"],
+              "path": ["v1", "exchange", "trades"],
+              "query": [
+                {
+                  "key": "from",
+                  "value": "2025-01-01"
+                },
+                {
+                  "key": "to",
+                  "value": "2025-12-31"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "50"
+                }
+              ]
+            },
+            "description": "List all trades for analytics and monitoring"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Account Balance",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{circle_base_url}}/v1/businessAccount/balances",
+              "host": ["{{circle_base_url}}"],
+              "path": ["v1", "businessAccount", "balances"]
+            },
+            "description": "Get current account balances across all currencies"
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "circle_base_url",
+      "value": "https://api-sandbox.circle.com",
+      "type": "string"
+    }
+  ]
+}
+
